@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSync Pro | Inventory Management</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+</head>
+<body class="bg-gray-50">
+    <custom-sidebar></custom-sidebar>
+    <div class="ml-60"> <!-- Added margin to account for sidebar -->
+        <custom-navbar></custom-navbar>
+<main class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Inventory Dashboard</h1>
+            <div class="flex gap-4">
+                <a href="index.html" class="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                    <i data-feather="arrow-left"></i> Back to Requisitions
+                </a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Summary Cards -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-500">Total Products</h3>
+                        <p id="totalProducts" class="text-3xl font-bold text-gray-800">0</p>
+                    </div>
+                    <div class="p-3 rounded-full bg-blue-100 text-blue-600">
+                        <i data-feather="package"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-500">Pending Requests</h3>
+                        <p id="pendingRequests" class="text-3xl font-bold text-gray-800">0</p>
+                    </div>
+                    <div class="p-3 rounded-full bg-yellow-100 text-yellow-600">
+                        <i data-feather="clock"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-500">Low Stock Items</h3>
+                        <p id="lowStockItems" class="text-3xl font-bold text-gray-800">0</p>
+                    </div>
+                    <div class="p-3 rounded-full bg-red-100 text-red-600">
+                        <i data-feather="alert-triangle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Inventory Table -->
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800">Current Inventory</h2>
+                    <div class="relative">
+                        <input id="inventorySearch" type="text" placeholder="Search products..." class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                        <i data-feather="search" class="absolute left-3 top-2.5 text-gray-400"></i>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">In Stock</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pending Out</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTbody" class="bg-white divide-y divide-gray-200">
+                            <!-- populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Pending Requests -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Pending Requisitions</h2>
+                
+                <div class="space-y-4">
+                    <div id="pendingRequisitions" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+                        <!-- populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <custom-footer></custom-footer>
+    </div> <!-- Closing div for main content area -->
+    <script src="sidebar.js"></script>
+    <script>
+// Shared data with requisitions page
+        let products = JSON.parse(localStorage.getItem('products')) || [];
+        let requisitions = JSON.parse(localStorage.getItem('requisitions')) || [];
+        let employees = JSON.parse(localStorage.getItem('employees')) || [];
+
+        // DOM refs
+        const inventoryTbody = document.getElementById('inventoryTbody');
+        const pendingRequisitions = document.getElementById('pendingRequisitions');
+        const totalProductsEl = document.getElementById('totalProducts');
+        const pendingRequestsEl = document.getElementById('pendingRequests');
+        const lowStockItemsEl = document.getElementById('lowStockItems');
+        const inventorySearch = document.getElementById('inventorySearch');
+
+        // Calculate pending stock out quantities
+        function getPendingStockOut(productId) {
+            return requisitions
+                .filter(req => req.status === 'Pending' && req.type === 'out')
+                .reduce((total, req) => {
+                    const item = req.items.find(it => it.productId === productId);
+                    return total + (item ? Number(item.qty) : 0);
+                }, 0);
+        }
+
+        // Render inventory table
+        function renderInventory() {
+            inventoryTbody.innerHTML = '';
+            const searchTerm = (inventorySearch.value || '').toLowerCase();
+            
+            const filteredProducts = products.filter(p => 
+                p.name.toLowerCase().includes(searchTerm) ||
+                p.unit.toLowerCase().includes(searchTerm)
+            );
+
+            filteredProducts.forEach(p => {
+                const pendingOut = getPendingStockOut(p.id);
+                const isLowStock = p.stock < 10;
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                                <i data-feather="package" class="text-gray-500"></i>
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-medium text-gray-900">${p.name}</div>
+                                <div class="text-sm text-gray-500">ID: ${p.id}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${p.unit}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${isLowStock ? 'text-red-600' : 'text-gray-900'}">${p.stock}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${pendingOut}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${isLowStock ? 
+                            '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Low Stock</span>' : 
+                            '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">In Stock</span>'}
+                    </td>
+                `;
+                inventoryTbody.appendChild(tr);
+            });
+
+            // Update summary cards
+            totalProductsEl.textContent = products.length;
+            pendingRequestsEl.textContent = requisitions.filter(r => r.status === 'Pending').length;
+            lowStockItemsEl.textContent = products.filter(p => p.stock < 10).length;
+        }
+
+        // Render pending requisitions
+        function renderPendingRequisitions() {
+            pendingRequisitions.innerHTML = '';
+            const pending = requisitions.filter(r => r.status === 'Pending');
+            
+            if (pending.length === 0) {
+                pendingRequisitions.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i data-feather="check-circle" class="w-12 h-12 mx-auto text-gray-400"></i>
+                        <p class="mt-2">No pending requisitions</p>
+                    </div>
+                `;
+                return;
+            }
+
+            pending.forEach(req => {
+                const emp = employees.find(e => e.id === req.employeeId);
+                const card = document.createElement('div');
+                card.className = 'border rounded-lg p-4 hover:shadow-md transition-shadow';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="font-medium">${emp ? emp.name : 'Unknown Employee'}</h3>
+                            <p class="text-sm text-gray-500">${req.date} • ${req.id}</p>
+                        </div>
+                        <span class="px-2 py-1 text-xs rounded-full ${req.type === 'out' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}">
+                            ${req.type === 'out' ? 'Stock Out' : 'Stock In'}
+                        </span>
+                    </div>
+                    <div class="space-y-2 my-2">
+                        ${req.items.map(item => {
+                            const prod = products.find(p => p.id === item.productId);
+                            return `
+                                <div class="flex justify-between text-sm">
+                                    <span>${prod ? prod.name : (item.name || 'Unknown')}</span>
+                                    <span class="font-medium">${item.qty} ${prod ? prod.unit : ''}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    <div class="flex justify-end gap-2 mt-3">
+                        <button data-req-id="${req.id}" data-action="approve" class="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded">Approve</button>
+                        <button data-req-id="${req.id}" data-action="deny" class="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded">Deny</button>
+                    </div>
+                `;
+                pendingRequisitions.appendChild(card);
+            });
+
+            // Add event listeners to approve/deny buttons
+            document.querySelectorAll('[data-req-id]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const reqId = e.target.getAttribute('data-req-id');
+                    const action = e.target.getAttribute('data-action');
+                    
+                    if (action === 'approve') {
+                        approveRequisition(reqId);
+                    } else {
+                        denyRequisition(reqId);
+                    }
+                });
+            });
+        }
+
+        // Approve requisition
+        function approveRequisition(id) {
+            const req = requisitions.find(r => r.id === id);
+            if (!req || req.status !== 'Pending') return;
+            
+            // Update stock levels
+            req.items.forEach(item => {
+                const product = products.find(p => p.id === item.productId);
+                if (!product) return;
+                
+                if (req.type === 'out') {
+                    product.stock = Math.max(0, product.stock - item.qty);
+                } else {
+                    product.stock += item.qty;
+                }
+            });
+
+            req.status = 'Approved';
+            saveData();
+            renderInventory();
+            renderPendingRequisitions();
+        }
+
+        // Deny requisition
+        function denyRequisition(id) {
+            const req = requisitions.find(r => r.id === id);
+            if (!req || req.status !== 'Pending') return;
+            
+            req.status = 'Denied';
+            saveData();
+            renderPendingRequisitions();
+        }
+
+        // Save data to localStorage
+        function saveData() {
+            localStorage.setItem('products', JSON.stringify(products));
+            localStorage.setItem('requisitions', JSON.stringify(requisitions));
+            localStorage.setItem('employees', JSON.stringify(employees));
+        }
+
+        // Search functionality
+        inventorySearch.addEventListener('input', renderInventory);
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderInventory();
+            renderPendingRequisitions();
+            if (window.feather) feather.replace();
+        });
+    </script>
+</body>
+</html>
